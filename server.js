@@ -19,10 +19,7 @@ app.use(express.static(path.join(__dirname)));
 const COLS = 10, ROWS = 10;
  
 const BOT_NAMES = [
-  'Arjun', 'Priya', 'Rohan', 'Ananya', 'Vikram', 'Sneha', 'Karan', 'Divya',
-  'Aditya', 'Meera', 'Rahul', 'Pooja', 'Nikhil', 'Shreya', 'Amit', 'Neha',
-  'Suresh', 'Kavya', 'Ravi', 'Isha', 'Deepak', 'Simran', 'Ajay', 'Tanya',
-  'Sanjay', 'Nisha', 'Manoj', 'Ritika', 'Prakash', 'Swati',
+  "Player 2"
 ];
  
 // ─── Room Management ─────────────────────────────────────────────────────────
