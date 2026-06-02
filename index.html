@@ -133,25 +133,7 @@
   .mode-btn.active { background: var(--surface2); color: var(--text); border-color: rgba(255,255,255,0.18); }
   .mode-btn:disabled { opacity: 0.3; cursor: not-allowed; }
  
-  /* Touch wall controls — shown in wall mode on touch devices */
-  #touch-wall-bar {
-    display: none;
-    gap: 6px;
-    width: 100%;
-  }
-  #touch-wall-bar.visible { display: flex; }
-  .twb-btn {
-    flex: 1; padding: 10px; border-radius: 8px;
-    border: 1px solid var(--border); background: var(--surface2);
-    color: var(--text); font-family: var(--font-display);
-    font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s;
-  }
-  .twb-btn.confirm { border-color: var(--accent); color: var(--accent); }
-  .twb-btn.rotate  { border-color: rgba(255,255,255,0.2); }
-  .twb-hint {
-    font-family: var(--font-mono); font-size: 11px; color: var(--muted);
-    text-align: center; letter-spacing: 0.5px;
-  }
+ 
  
   #canvas-wrap { width: 100%; max-width: 540px; position: relative; touch-action: none; }
   canvas { width: 100%; height: auto; display: block; cursor: crosshair; border-radius: 12px; }
@@ -172,13 +154,22 @@
     border-radius: 20px; padding: 44px 52px; text-align: center;
     display: flex; flex-direction: column; align-items: center; gap: 14px;
     animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
   }
+  .win-close {
+    position: absolute; top: 14px; right: 16px;
+    background: none; border: none; color: var(--muted);
+    font-size: 22px; cursor: pointer; line-height: 1; padding: 4px 8px;
+    border-radius: 6px; transition: color 0.15s;
+  }
+  .win-close:hover { color: var(--text); }
   @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   .win-emoji { font-size: 72px; line-height: 1; }
   .win-title { font-size: 36px; font-weight: 800; letter-spacing: -1px; }
   .win-title.you  { color: var(--accent); }
   .win-title.them { color: var(--p2); }
   .win-sub { font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
+ 
  
   /* ── Toast ─────────────────────────────────────────────────────────── */
   .toast {
@@ -269,12 +260,7 @@
     <button class="mode-btn" id="btn-wall" onclick="setMode('wall')">Place Wall</button>
   </div>
  
-  <!-- Touch wall controls (only shown in wall mode) -->
-  <div id="touch-wall-bar">
-    <button class="twb-btn rotate" onclick="rotateTouchWall()">↻ Rotate</button>
-    <button class="twb-btn confirm" id="btn-confirm-wall" onclick="confirmTouchWall()" disabled>✓ Place Wall</button>
-  </div>
-  <div class="twb-hint" id="touch-hint" style="display:none">Tap grid to position · Rotate to flip · Place to confirm</div>
+ 
  
   <div id="canvas-wrap">
     <canvas id="gc" width="540" height="540"></canvas>
@@ -286,10 +272,12 @@
 <!-- ── Win Overlay ───────────────────────────────────────────────────────── -->
 <div id="win-overlay">
   <div class="win-box">
+    <button class="win-close" onclick="goHome()" title="Back to lobby">✕</button>
     <div class="win-emoji" id="win-emoji">🏆</div>
     <div class="win-title" id="win-title">You Win!</div>
     <div class="win-sub" id="win-sub"></div>
     <button class="btn btn-primary" style="margin-top:8px" onclick="requestRestart()">Play Again</button>
+    <button class="btn btn-secondary" style="margin-top:4px" onclick="goHome()">Back to Home</button>
   </div>
 </div>
  
@@ -305,8 +293,7 @@ const isTouchDevice = () => window.matchMedia('(pointer: coarse)').matches;
 let socket, myPlayer, roomId, vsBot;
 let gameState = null;
 let clientMode = 'move';
-let wallPreview = null;       // current hover/touch wall position
-let touchWallLocked = null;   // locked position on first touch (touch devices)
+let wallPreview = null;
  
 // ─── Socket setup ─────────────────────────────────────────────────────────────
 function connect() {
@@ -361,13 +348,11 @@ function connect() {
  
   socket.on('state', (st) => {
     gameState = st;
-    touchWallLocked = null;
     if (clientMode === 'wall' && !isMyTurn()) {
       clientMode = 'move';
     }
     wallPreview = null;
     updateModeBar();
-    updateTouchWallBar();
     updateUI();
     render();
     if (st.over) showWin(st.winner);
@@ -447,27 +432,13 @@ function updateModeBar() {
   document.getElementById('btn-wall').classList.toggle('active', clientMode === 'wall');
 }
  
-function updateTouchWallBar() {
-  const inWallMode = clientMode === 'wall' && isMyTurn();
-  const bar = document.getElementById('touch-wall-bar');
-  const hint = document.getElementById('touch-hint');
-  if (isTouchDevice() && inWallMode) {
-    bar.classList.add('visible');
-    hint.style.display = '';
-  } else {
-    bar.classList.remove('visible');
-    hint.style.display = 'none';
-  }
-  document.getElementById('btn-confirm-wall').disabled = !touchWallLocked;
-}
+ 
  
 function setMode(m) {
   if (!isMyTurn()) return;
   clientMode = m;
   wallPreview = null;
-  touchWallLocked = null;
   updateModeBar();
-  updateTouchWallBar();
   render();
 }
  
@@ -498,14 +469,39 @@ function showWin(winner) {
   overlay.classList.add('show');
 }
  
+function goHome() {
+  document.getElementById('win-overlay').classList.remove('show');
+  document.getElementById('game').style.display = 'none';
+  document.getElementById('waiting').style.display = 'none';
+  document.getElementById('lobby').style.display = 'flex';
+  // Reset player name labels for next game
+  document.getElementById('p2name').textContent = 'Player 2';
+  ['tag1','tag2'].forEach(id => {
+    const el = document.getElementById(id);
+    el.style.display = 'none';
+    el.textContent = '';
+  });
+  // Stop waiting stopwatch if running
+  if (socket && socket._fallbackTimers) {
+    socket._fallbackTimers.forEach(t => clearInterval(t));
+    socket._fallbackTimers = null;
+  }
+  gameState = null;
+  wallPreview = null;
+  clientMode = 'move';
+  myPlayer = null;
+  roomId = null;
+  vsBot = false;
+  if (socket) { socket.disconnect(); socket = null; }
+  render();
+}
+ 
 function requestRestart() {
   document.getElementById('win-overlay').classList.remove('show');
   gameState = null;
-  touchWallLocked = null;
   wallPreview = null;
   clientMode = 'move';
   updateModeBar();
-  updateTouchWallBar();
   socket.emit('restart');
 }
  
@@ -621,8 +617,7 @@ function render() {
  
     // Walls
     for (const w of st.walls) drawWall(w, false);
-    const preview = touchWallLocked || wallPreview;
-    if (preview && clientMode === 'wall') drawWall(preview, true);
+    if (wallPreview && clientMode === 'wall') drawWall(wallPreview, true);
  
     // Pieces (drawn with un-flipped text so labels stay upright)
     drawPiece(st.pieces[1], '#4f9cf9', '1', myPlayer === 1);
@@ -717,21 +712,6 @@ function getGamePos(e) {
 }
  
 // ─── Touch wall placement ────────────────────────────────────────────────────
-function rotateTouchWall() {
-  if (!touchWallLocked) return;
-  const newDir = touchWallLocked.dir === 'h' ? 'v' : 'h';
-  const gx = (touchWallLocked.c + (newDir === 'v' ? 0 : 1)) * CELL;
-  const gy = (touchWallLocked.r + (newDir === 'h' ? 0 : 1)) * CELL;
-  const snapped = snapWall(gx, gy, newDir);
-  if (snapped) { touchWallLocked = { ...snapped }; wallPreview = null; render(); }
-}
- 
-function confirmTouchWall() {
-  if (!touchWallLocked) return;
-  socket.emit('wall', touchWallLocked);
-  touchWallLocked = null; wallPreview = null;
-  updateTouchWallBar(); render();
-}
  
 // ─── Mouse input (desktop) ────────────────────────────────────────────────────
 canvas.addEventListener('mousemove', e => {
@@ -761,7 +741,7 @@ canvas.addEventListener('click', e => {
   }
 });
  
-// ─── Touch input (mobile) ─────────────────────────────────────────────────────
+// ─── Touch input (mobile) — single tap to move or place wall ────────────────
 canvas.addEventListener('touchend', e => {
   e.preventDefault();
   if (!gameState || gameState.over) return;
@@ -772,16 +752,32 @@ canvas.addEventListener('touchend', e => {
   if (clientMode === 'move') {
     if (r >= 0 && r < ROWS && c >= 0 && c < COLS) socket.emit('move', { r, c });
   } else {
-    const snapped = snapWall(rawX, rawY);
-    if (snapped) {
-      touchWallLocked = { ...snapped };
-      wallPreview = null;
-      updateTouchWallBar();
-      render();
-      showLog('Tap Rotate to flip · Tap Place to confirm', '');
-    }
+    const w = snapWall(rawX, rawY);
+    if (w) socket.emit('wall', w);
   }
 }, { passive: false });
+ 
+// Intercept Android/browser back button — go home instead of closing
+window.addEventListener('popstate', () => {
+  const overlay = document.getElementById('win-overlay');
+  if (overlay.classList.contains('show')) {
+    // Back from win screen → home
+    goHome();
+  } else if (document.getElementById('game').style.display !== 'none') {
+    // Back while in-game → ask confirm or just go home
+    goHome();
+  } else if (document.getElementById('waiting').style.display !== 'none') {
+    // Back from waiting → lobby
+    document.getElementById('waiting').style.display = 'none';
+    document.getElementById('lobby').style.display = 'flex';
+    if (socket) { socket.disconnect(); socket = null; }
+  }
+  // Always re-push so next back is also intercepted
+  history.pushState({ page: 'game' }, '');
+});
+ 
+// Push initial state so first back press is caught
+history.pushState({ page: 'lobby' }, '');
  
 // Initial render
 render();

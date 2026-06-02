@@ -64,7 +64,6 @@ function getNeighbors(walls, r, c) {
     .map(([dr,dc]) => [r+dr, c+dc]);
 }
  
-// BFS: returns distance to goalRow, or Infinity if unreachable
 function bfsDist(walls, startR, startC, goalRow) {
   const visited = new Set([`${startR},${startC}`]);
   const queue = [[startR, startC, 0]];
@@ -79,10 +78,9 @@ function bfsDist(walls, startR, startC, goalRow) {
   return Infinity;
 }
  
-// BFS: returns first step on shortest path, or null
 function bfsNextStep(walls, startR, startC, goalRow) {
   const visited = new Set([`${startR},${startC}`]);
-  const queue = [[startR, startC, null]]; // [r, c, firstStep]
+  const queue = [[startR, startC, null]];
   while (queue.length) {
     const [r, c, first] = queue.shift();
     if (r === goalRow) return first;
@@ -124,21 +122,14 @@ function isWallLegal(walls, w, pieces, goals) {
 }
  
 // ─── Bot AI ──────────────────────────────────────────────────────────────────
-// Bot is always player 2
 function botTurn(st) {
   const bot = 2, human = 1;
   const botPiece   = st.pieces[bot];
   const humanPiece = st.pieces[human];
+  const botDist    = bfsDist(st.walls, botPiece.r,   botPiece.c,   st.goals[bot]);
+  const humanDist  = bfsDist(st.walls, humanPiece.r, humanPiece.c, st.goals[human]);
  
-  const botDist   = bfsDist(st.walls, botPiece.r,   botPiece.c,   st.goals[bot]);
-  const humanDist = bfsDist(st.walls, humanPiece.r, humanPiece.c, st.goals[human]);
- 
-  // Wall strategy:
-  //   - Always try to wall if human is within 6 steps of winning (aggressive near endgame)
-  //   - Also wall whenever human is ahead (closer to goal than bot)
-  const shouldWall = st.wallCounts[bot] > 0 &&
-    (humanDist <= 6 || humanDist < botDist);
- 
+  const shouldWall = st.wallCounts[bot] > 0 && (humanDist <= 6 || humanDist < botDist);
   if (shouldWall) {
     const wall = findBestWall(st, human, bot);
     if (wall) {
@@ -149,55 +140,39 @@ function botTurn(st) {
     }
   }
  
-  // Move along our shortest path
   const next = bfsNextStep(st.walls, botPiece.r, botPiece.c, st.goals[bot]);
   if (next) {
     st.pieces[bot] = next;
-    if (next.r === st.goals[bot]) {
-      st.over = true;
-      st.winner = bot;
-      return;
-    }
+    if (next.r === st.goals[bot]) { st.over = true; st.winner = bot; return; }
   }
   st.turn = human;
 }
  
-// Find a wall that maximally lengthens the human's path without trapping anyone.
-// Returns the best wall found (any gain > 0), or null if none exists.
 function findBestWall(st, targetPlayer, wallOwner) {
   const pieces = st.pieces, goals = st.goals, walls = st.walls;
   const targetPiece = pieces[targetPlayer];
   const baseDist = bfsDist(walls, targetPiece.r, targetPiece.c, goals[targetPlayer]);
+  let bestWall = null, bestGain = 0;
  
-  let bestWall = null;
-  let bestGain = 0;
- 
-  // Try all horizontal walls
   for (let r = 1; r < ROWS; r++) {
     for (let c = 0; c < COLS - 1; c++) {
       const w = { r, c, dir: 'h', owner: wallOwner };
       if (!isWallLegal(walls, w, pieces, goals)) continue;
-      const newDist = bfsDist([...walls, w], targetPiece.r, targetPiece.c, goals[targetPlayer]);
-      const gain = newDist - baseDist;
+      const gain = bfsDist([...walls, w], targetPiece.r, targetPiece.c, goals[targetPlayer]) - baseDist;
       if (gain > bestGain) { bestGain = gain; bestWall = w; }
     }
   }
-  // Try all vertical walls
   for (let r = 0; r < ROWS - 1; r++) {
     for (let c = 1; c < COLS; c++) {
       const w = { r, c, dir: 'v', owner: wallOwner };
       if (!isWallLegal(walls, w, pieces, goals)) continue;
-      const newDist = bfsDist([...walls, w], targetPiece.r, targetPiece.c, goals[targetPlayer]);
-      const gain = newDist - baseDist;
+      const gain = bfsDist([...walls, w], targetPiece.r, targetPiece.c, goals[targetPlayer]) - baseDist;
       if (gain > bestGain) { bestGain = gain; bestWall = w; }
     }
   }
- 
-  // Place any wall that adds at least 1 step to human's path
   return bestGain >= 1 ? bestWall : null;
 }
  
-// ─── Apply move/wall with shared validation ───────────────────────────────────
 function applyMove(st, player, r, c) {
   const p = st.pieces[player];
   const dr = r - p.r, dc = c - p.c;
@@ -224,10 +199,8 @@ io.on('connection', (socket) => {
   let myRoom = null;
   let myPlayer = null;
  
-  // ── Quick match (human vs human) ────────────────────────────────────────────
   socket.on('join', () => {
     if (waitingRoom) {
-      // Second human found — cancel bot fallback timer
       const room = rooms.get(waitingRoom);
       if (room.botFallbackTimer) { clearTimeout(room.botFallbackTimer); room.botFallbackTimer = null; }
       room.players[1] = socket.id;
@@ -249,7 +222,6 @@ io.on('connection', (socket) => {
       waitingRoom = roomId;
       socket.emit('waiting', { roomId });
  
-      // After 10-15s with no human, silently fall back to bot
       const fallbackDelay = 10000 + Math.random() * 5000;
       room.botFallbackTimer = setTimeout(() => {
         if (waitingRoom !== roomId) return;
@@ -267,7 +239,6 @@ io.on('connection', (socket) => {
     }
   });
  
-  // ── Join by room code ───────────────────────────────────────────────────────
   socket.on('joinRoom', ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room) { socket.emit('error', 'Room not found'); return; }
@@ -282,83 +253,49 @@ io.on('connection', (socket) => {
     io.to(myRoom).emit('state', room.state);
   });
  
-  // ── Play vs Bot ─────────────────────────────────────────────────────────────
-socket.on('joinBot', () => {
+  socket.on('joinBot', () => {
     const roomId = makeRoomId();
     const state = initState();
-
-    const botName =
-        BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
-
-    rooms.set(roomId, {
-        players: [socket.id, 'BOT'],
-        state,
-        vsBot: true,
-        botName
-    });
-
+    const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
+    const room = { players: [socket.id, 'BOT'], state, vsBot: true, botName };
+    rooms.set(roomId, room);
     socket.join(roomId);
-
     myRoom = roomId;
     myPlayer = 1;
-
-    socket.emit('assigned', {
-        player: 1,
-        roomId,
-        vsBot: true,
-        opponentName: botName
-    });
-
+    socket.emit('assigned', { player: 1, roomId, vsBot: true, opponentName: botName });
     socket.emit('state', state);
-});
+  });
  
-  // ── Move ────────────────────────────────────────────────────────────────────
   socket.on('move', ({ r, c }) => {
     const room = rooms.get(myRoom);
     if (!room || room.state.over) return;
     const st = room.state;
     if (st.turn !== myPlayer) { socket.emit('error', "Not your turn"); return; }
- 
     const err = applyMove(st, myPlayer, r, c);
     if (err) { socket.emit('error', err); return; }
- 
     io.to(myRoom).emit('state', st);
- 
-    // Trigger bot if not over and it's bot's turn
     if (!st.over && room.vsBot && st.turn === 2) {
       setTimeout(() => {
-        if (!room.state.over) {
-          botTurn(room.state);
-          io.to(myRoom).emit('state', room.state);
-        }
+        if (!room.state.over) { botTurn(room.state); io.to(myRoom).emit('state', room.state); }
       }, 600);
     }
   });
  
-  // ── Place wall ──────────────────────────────────────────────────────────────
   socket.on('wall', (w) => {
     const room = rooms.get(myRoom);
     if (!room || room.state.over) return;
     const st = room.state;
     if (st.turn !== myPlayer) { socket.emit('error', "Not your turn"); return; }
- 
     const err = applyWall(st, myPlayer, w);
     if (err) { socket.emit('error', err); return; }
- 
     io.to(myRoom).emit('state', st);
- 
-    // Trigger bot
     if (!st.over && room.vsBot && st.turn === 2) {
       setTimeout(() => {
-        if (!room.state.over) {
-          botTurn(room.state);
-          io.to(myRoom).emit('state', room.state);
-        }
+        if (!room.state.over) { botTurn(room.state); io.to(myRoom).emit('state', room.state); }
       }, 600);
     }
   });
  
-  // ── Restart ─────────────────────────────────────────────────────────────────
   socket.on('restart', () => {
     const room = rooms.get(myRoom);
     if (!room) return;
@@ -366,7 +303,6 @@ socket.on('joinBot', () => {
     io.to(myRoom).emit('state', room.state);
   });
  
-  // ── Disconnect ──────────────────────────────────────────────────────────────
   socket.on('disconnect', () => {
     if (!myRoom) return;
     const room = rooms.get(myRoom);
