@@ -283,19 +283,34 @@ io.on('connection', (socket) => {
   });
  
   // ── Play vs Bot ─────────────────────────────────────────────────────────────
-  socket.on('joinBot', () => {
+socket.on('joinBot', () => {
     const roomId = makeRoomId();
     const state = initState();
-    // players[1] = 'BOT' sentinel
-    rooms.set(roomId, { players: [socket.id, 'BOT'], state, vsBot: true });
+
+    const botName =
+        BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
+
+    rooms.set(roomId, {
+        players: [socket.id, 'BOT'],
+        state,
+        vsBot: true,
+        botName
+    });
+
     socket.join(roomId);
+
     myRoom = roomId;
     myPlayer = 1;
-    const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
-    room.botName = botName;
-    socket.emit('assigned', { player: 1, roomId, vsBot: true, opponentName: botName });
+
+    socket.emit('assigned', {
+        player: 1,
+        roomId,
+        vsBot: true,
+        opponentName: botName
+    });
+
     socket.emit('state', state);
-  });
+});
  
   // ── Move ────────────────────────────────────────────────────────────────────
   socket.on('move', ({ r, c }) => {
